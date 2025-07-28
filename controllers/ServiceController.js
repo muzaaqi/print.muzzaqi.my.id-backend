@@ -1,3 +1,4 @@
+import e from "express";
 import { PrismaClient } from "../generated/prisma/index.js";
 
 const prisma = new PrismaClient();
@@ -90,6 +91,30 @@ export const deleteService = async (req, res) => {
         id: req.params.id,
       }
   });
+    res.status(200).json(service);
+  } catch (error) {
+    res.status(400).json({ msg: error.message });
+  }
+};
+
+const getPagesStock = async (serviceId) => {
+  const service = await prisma.service.findUnique({
+    where: { id: serviceId },
+  });
+  return service ? service.pagesStock : 0;
+};
+
+export const updatePagesStock = async (req, res) => {
+  const { id, pages } = req.stock;
+  try {
+    const service = await prisma.service.update({
+      where: {
+        id: id,
+      },
+      data: {
+        pagesStock: await getPagesStock(id) - pages,
+      },
+    });
     res.status(200).json(service);
   } catch (error) {
     res.status(400).json({ msg: error.message });

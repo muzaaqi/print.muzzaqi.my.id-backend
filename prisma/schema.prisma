@@ -34,8 +34,6 @@ enum PaymentStatus {
 model Service {
   id                 String     @id @default(cuid())
   name               String
-  description        String?
-  paperSize          String
   priceOneSide       Float
   priceTwoSides      Float
   priceColorOneSide  Float
@@ -46,7 +44,7 @@ model Service {
   transactions       Transaction[]
 }
 
-model Transaction {
+model Transaction {bbbbbbbbbb
   id            String   @id @default(cuid())
   name          String
   phone         String
