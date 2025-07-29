@@ -1,4 +1,3 @@
-import e from "express";
 import { PrismaClient } from "../generated/prisma/index.js";
 
 const prisma = new PrismaClient();
@@ -27,24 +26,25 @@ export const getServiceById = async (req, res) => {
 
 export const createService = async (req, res) => {
   const {
-    name,
-    description,
-    paperSize,
+    serviceName,
+    remainingStock,
     priceOneSide,
     priceTwoSides,
     priceColorOneSide,
     priceColorTwoSides,
+    imageUrl,
   } = req.body;
   try {
     const service = await prisma.service.create({
       data: {
-        name: name,
-        description: description,
-        paperSize: paperSize,
+        serviceName: serviceName,
+        id: serviceName.replace(/\s+/g, "-").toLowerCase(),
+        remainingStock: remainingStock,
         priceOneSide: priceOneSide,
         priceTwoSides: priceTwoSides,
         priceColorOneSide: priceColorOneSide,
         priceColorTwoSides: priceColorTwoSides,
+        imageUrl: imageUrl,
       },
     });
     res.status(201).json(service);
@@ -55,9 +55,7 @@ export const createService = async (req, res) => {
 
 export const updateService = async (req, res) => {
   const {
-    name,
-    description,
-    paperSize,
+    serviceName,
     priceOneSide,
     priceTwoSides,
     priceColorOneSide,
@@ -66,12 +64,10 @@ export const updateService = async (req, res) => {
   try {
     const service = await prisma.service.update({
       where: {
-        id: req.params.id
+        id: req.params.id,
       },
       data: {
-        name: name,
-        description: description,
-        paperSize: paperSize,
+        serviceName: serviceName,
         priceOneSide: priceOneSide,
         priceTwoSides: priceTwoSides,
         priceColorOneSide: priceColorOneSide,
@@ -89,8 +85,8 @@ export const deleteService = async (req, res) => {
     const service = await prisma.service.delete({
       where: {
         id: req.params.id,
-      }
-  });
+      },
+    });
     res.status(200).json(service);
   } catch (error) {
     res.status(400).json({ msg: error.message });
@@ -101,22 +97,22 @@ const getPagesStock = async (serviceId) => {
   const service = await prisma.service.findUnique({
     where: { id: serviceId },
   });
-  return service ? service.pagesStock : 0;
+  return service ? service.remainingStock : 0;
 };
 
-export const updatePagesStock = async (req, res) => {
-  const { id, pages } = req.stock;
+export const updatePagesStock = async (serviceId, pages) => {
   try {
+    const currentStock = await getPagesStock(serviceId);
     const service = await prisma.service.update({
       where: {
-        id: id,
+        id: serviceId,
       },
       data: {
-        pagesStock: await getPagesStock(id) - pages,
+        remainingStock: currentStock - pages,
       },
     });
-    res.status(200).json(service);
+    return service;
   } catch (error) {
-    res.status(400).json({ msg: error.message });
+    throw new Error(error.message);
   }
 };

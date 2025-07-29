@@ -32,33 +32,36 @@ enum PaymentStatus {
 }
 
 model Service {
-  id                 String     @id @default(cuid())
-  name               String
+  id                 String     @id
+  serviceName        String
+  remainingStock     Int
   priceOneSide       Float
   priceTwoSides      Float
   priceColorOneSide  Float
   priceColorTwoSides Float
+  imageUrl           String
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
   transactions       Transaction[]
 }
 
-model Transaction {bbbbbbbbbb
+model Transaction {
   id            String   @id @default(cuid())
   name          String
   phone         String
-  description   String?
+  fileUrl       String
 
   serviceId     String
   service       Service  @relation(fields: [serviceId], references: [id])
 
+  pageQuantity      Float
   type          String
-  status        String   @default("processing")
-  quantity      Float
+  color         String
+  note          String?
   totalPrice    Float
+  status        String   @default("processing")
   paymentStatus String   @default("pending")
-  fileUrl       String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
