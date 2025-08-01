@@ -47,7 +47,7 @@ model Service {
 }
 
 model Transaction {
-  id            String   @id @default(cuid())
+  id            String   @id
   name          String
   phone         String
   fileUrl       String
@@ -60,7 +60,7 @@ model Transaction {
   color         String
   note          String?
   totalPrice    Float
-  status        String   @default("processing")
+  status        String   
   paymentStatus String   @default("pending")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

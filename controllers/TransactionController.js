@@ -43,9 +43,10 @@ export const createTransaction = async (req, res) => {
     paymentStatus,
   } = req.body;
 
+  const order_id = `TRX-${Date.now()}`; // ID dalam Prisma schema adalah String (cuid)
   const parameter = {
     transaction_details: {
-      order_id: `TRX-${Date.now()}`,
+      order_id: order_id,
       gross_amount: Number(totalPrice),
     },
     customer_details: {
@@ -83,6 +84,7 @@ export const createTransaction = async (req, res) => {
 
     const transaction = await prisma.transaction.create({
       data: {
+        id: order_id,
         name,
         phone,
         serviceId,
@@ -94,6 +96,13 @@ export const createTransaction = async (req, res) => {
         totalPrice: Number(totalPrice),
         paymentStatus,
         fileUrl,
+      },
+      include: {
+        service: {
+          select: {
+            serviceName: true,
+          },
+        },
       },
     });
 
@@ -131,35 +140,68 @@ export const deleteTransaction = async (req, res) => {
   try {
     // Cari data dulu, termasuk fileUrl
     const transaction = await prisma.transaction.findUnique({
-      where: { id: Number(id) },
+      where: { id: id }, // ID dalam schema adalah String (cuid), bukan Number
     });
 
     if (!transaction) {
       return res.status(404).json({ msg: "Transaction not found" });
     }
 
-    // Jika ada fileUrl, ambil key-nya dan hapus dari R2
+    // Jika ada fileUrl, hapus file dari R2
     if (transaction.fileUrl) {
-      const url = new URL(transaction.fileUrl);
-      const key = url.pathname.substring(1); // hapus `/` di awal path
+      try {
+        await s3.send(
+          new DeleteObjectCommand({
+            Bucket: process.env.R2_BUCKET,
+            Key: transaction.fileUrl, // fileUrl sudah berupa key
+          })
+        );
+        console.log(`✅ File deleted from R2: ${transaction.fileUrl}`);
+      } catch (fileError) {
+        console.warn(`⚠️ Failed to delete file from R2: ${fileError.message}`);
+        // Continue with transaction deletion even if file deletion fails
+      }
+    }
 
-      await s3.send(
-        new DeleteObjectCommand({
-          Bucket: process.env.R2_BUCKET,
-          Key: key,
-        })
-      );
+    // Kembalikan stock pages
+    if (transaction.serviceId && transaction.pageQuantity) {
+      try {
+        // Tambahkan kembali stock yang sudah dikurangi
+        const service = await prisma.service.findUnique({
+          where: { id: transaction.serviceId },
+        });
+
+        if (service) {
+          await prisma.service.update({
+            where: { id: transaction.serviceId },
+            data: {
+              remainingStock: service.remainingStock + transaction.pageQuantity,
+            },
+          });
+          console.log(`✅ Stock restored: +${transaction.pageQuantity} pages`);
+        }
+      } catch (stockError) {
+        console.warn(`⚠️ Failed to restore stock: ${stockError.message}`);
+      }
     }
 
     // Hapus data dari PostgreSQL
     await prisma.transaction.delete({
-      where: { id: Number(id) },
+      where: { id: id },
     });
 
-    res.status(200).json({ msg: "Transaction deleted successfully" });
+    console.log(`✅ Transaction deleted: ${id}`);
+    res.status(200).json({
+      msg: "Transaction and associated files deleted successfully",
+      success: true,
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ msg: "Failed to delete transaction" });
+    console.error("Delete transaction error:", error);
+    res.status(500).json({
+      msg: "Failed to delete transaction",
+      error: error.message,
+      success: false,
+    });
   }
 };
 
@@ -193,5 +235,50 @@ export const getDownloadUrl = async (req, res) => {
       msg: "Failed to generate signed URL",
       error: error.message,
     });
+  }
+};
+
+export const handleMidtransNotification = async (req, res) => {
+  try {
+    const notification = req.body;
+
+    const {
+      order_id,
+      transaction_status,
+      fraud_status,
+      payment_type,
+      settlement_time,
+    } = notification;
+
+    // Buat logic penyesuaian status
+    let paymentStatus = "pending";
+
+    if (transaction_status === "capture") {
+      if (fraud_status === "challenge") {
+        paymentStatus = "challenge";
+      } else if (fraud_status === "accept") {
+        paymentStatus = "paid";
+      }
+    } else if (transaction_status === "settlement") {
+      paymentStatus = "paid";
+    } else if (
+      transaction_status === "cancel" ||
+      transaction_status === "deny" ||
+      transaction_status === "expire"
+    ) {
+      paymentStatus = "failed";
+    } else if (transaction_status === "pending") {
+      paymentStatus = "pending";
+    }
+
+    await prisma.transaction.update({
+      where: { id: order_id },
+      data: { paymentStatus },
+    });
+
+    res.status(200).json({ msg: "Payment status updated" });
+  } catch (err) {
+    console.error("🔴 Webhook error:", err);
+    res.status(500).json({ msg: "Webhook error", error: err.message });
   }
 };
